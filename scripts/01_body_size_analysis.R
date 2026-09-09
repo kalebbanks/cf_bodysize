@@ -6,7 +6,7 @@
 #Author: Kaleb M. Banks
 #Date: 9/5/2026
 #####################
-tgdghdhsdhgs
+
 #IMPORTANT: Skip to line 130 if you don't want to download all the rasters and want the ready to model dataframe
 
 #####packages:
@@ -43,6 +43,7 @@ download.file(
   mode = "wb"
 )
 
+#####NO LONGER IN THE MODELS CONSIDER DELETEING LATER
 #Days above 10 degrees
 download.file(
   url = "https://s3.eu-west-1.amazonaws.com/data.gaezdev.aws.fao.org/res01/CRUTS32/Hist/lt3_CRUTS32_Hist_8110.tif",
@@ -50,7 +51,7 @@ download.file(
   mode = "wb"
 )
 
-#Download bioclim annual temperature (1), temp seasonality (4), Annual rainfall (12), Precip seasonality (15)
+#Download bioclim annual temperature (1), temp seasonality (4), max temps (5), min temps (6), Annual rainfall (12), Precip seasonality (15)
 worldclim_vars <- worldclim_global(
   var = "bio",
   res = 2.5,
@@ -60,11 +61,12 @@ worldclim_vars <- worldclim_global(
 
 #####Load rasters
 days_above_5 <- rast("data/rasters/days_above_5.tif")
-days_above_10 <- rast("data/rasters/days_above_10.tif")
 annual_temp <- rast("data/rasters/climate/wc2.1_2.5m/wc2.1_2.5m_bio_1.tif")
 temp_seasonality <- rast("data/rasters/climate/wc2.1_2.5m/wc2.1_2.5m_bio_4.tif")
+max_temp <- rast("data/rasters/climate/wc2.1_2.5m/wc2.1_2.5m_bio_5.tif")
+min_temp <- rast("data/rasters/climate/wc2.1_2.5m/wc2.1_2.5m_bio_6.tif")
 annual_rainfall <- rast("data/rasters/climate/wc2.1_2.5m/wc2.1_2.5m_bio_12.tif")
-rainfall_seasonality <- rast("data/rasters/climate/wc2.1_2.5m/wc2.1_2.5m_bio_13.tif")
+precip_seasonality <- rast("data/rasters/climate/wc2.1_2.5m/wc2.1_2.5m_bio_15.tif")
 
 
 #####Load and format morpho data
@@ -79,14 +81,18 @@ bio_vars <- c(
   annual_temp,
   temp_seasonality,
   annual_rainfall,
-  rainfall_seasonality
+  precip_seasonality, 
+  max_temp, 
+  min_temp
 )
 
 names(bio_vars) <- c(
   "annual_temp",
   "temp_seasonality",
   "annual_rainfall",
-  "rainfall_seasonality"
+  "precip_seasonality", 
+  "max_temp", 
+  "min_temp"
 )
 
 cf_points <- vect(
@@ -96,13 +102,11 @@ cf_points <- vect(
 )
 
 bio_vars_extract <- extract(bio_vars, cf_points)
-days_above_10_extract <- extract(days_above_10, cf_points)
 days_above_5_extract <- extract(days_above_5, cf_points)
 
 cf_morpho <- cbind(
   cf_morpho,
   bio_vars_extract[, -1],                  
-  days_above_10 = days_above_10_extract[, 2],
   days_above_5 = days_above_5_extract[, 2]
 )
 
@@ -127,11 +131,11 @@ nrow(cf_morpho)
 #write.csv(cf_morpho, "data/cf_morpho_clean.csv")
 
 #####Load and format Dataframe for modeling, can skip if you ran the above code ^
-cf_morpho <- read.csv("data/cf_morpho_clean.csv")
-cf_morpho$Sex <- factor(trimws(cf_morpho$Sex), levels = c("F","M"))
+#cf_morpho <- read.csv("data/cf_morpho_clean.csv")
+#cf_morpho$Sex <- factor(trimws(cf_morpho$Sex), levels = c("F","M"))
 
 #####Hypothesis for body size differences in Anurans across wide environmental gradients
-#These are taken from (Valenzuela-Sánchez et al., 2015)
+#These are copy and pasted from (Valenzuela-Sánchez et al., 2015)
 
 #Hypothesis 1: Heat balance: this hypothesis predicts that larger individuals would be favoured in cold environments due to their reduced surface/mass ratio and enhanced thermal inertia. Variable: Annual mean temperature (temp_ann). Predicted effect on body size with decreased latitude: Negative
 
@@ -160,48 +164,43 @@ cf_morpho$Sex <- factor(trimws(cf_morpho$Sex), levels = c("F","M"))
 
 #Look at correlations, expect most to be correlated with latitude
 cor(cf_morpho[, c("Latitude","annual_temp","temp_seasonality",
-                  "annual_rainfall","rainfall_seasonality",
-                  "days_above_10","days_above_5")], use = "complete.obs")
+                  "annual_rainfall","precip_seasonality",
+                  "days_above_5", "max_temp", "min_temp")], use ="complete.obs")
 
 
-# Linear Mixed-Effects models
-m_null      <- lme(SVL_Ave ~ Sex,                           random = ~ 1 | Site, data = cf_morpho, method = "ML")
-m_lat       <- lme(SVL_Ave ~ Latitude + Sex,              random = ~ 1 | Site, data = cf_morpho, method = "ML")
-m_temp_ann  <- lme(SVL_Ave ~ annual_temp + Sex,           random = ~ 1 | Site, data = cf_morpho, method = "ML")
-m_temp_seas <- lme(SVL_Ave ~ temp_seasonality + Sex,      random = ~ 1 | Site, data = cf_morpho, method = "ML")
-m_rain_ann  <- lme(SVL_Ave ~ annual_rainfall + Sex,        random = ~ 1 | Site, data = cf_morpho, method = "ML")
-m_rain_seas <- lme(SVL_Ave ~ rainfall_seasonality + Sex,  random = ~ 1 | Site, data = cf_morpho, method = "ML")
-m_days10    <- lme(SVL_Ave ~ days_above_10 + Sex,         random = ~ 1 | Site, data = cf_morpho, method = "ML")
-m_days5    <- lme(SVL_Ave ~ days_above_5 + Sex,         random = ~ 1 | Site, data = cf_morpho, method = "ML")
+m_null      <- lm(SVL_Ave ~ Sex, data = cf_morpho)
+m_lat       <- lm(SVL_Ave ~ Latitude + Sex, data = cf_morpho)
+m_temp_ann  <- lm(SVL_Ave ~ annual_temp + Sex, data = cf_morpho)
+m_temp_seas <- lm(SVL_Ave ~ temp_seasonality + Sex, data = cf_morpho)
+m_rain_ann  <- lm(SVL_Ave ~ annual_rainfall + Sex, data = cf_morpho)
+m_rain_seas <- lm(SVL_Ave ~ precip_seasonality + Sex, data = cf_morpho)
+m_days5     <- lm(SVL_Ave ~ days_above_5 + Sex, data = cf_morpho)
+m_min_temp  <- lm(SVL_Ave ~ min_temp + Sex, data = cf_morpho)
+m_max_temp  <- lm(SVL_Ave ~ max_temp + Sex, data = cf_morpho)
+
+
+
 
 # List for AICc ranking
 models <- list(
   "Null"                 = m_null,
-  "Latitude"             = m_lat,
   "Annual Temp"          = m_temp_ann,
   "Temp Seasonality"     = m_temp_seas,
   "Annual Rainfall"      = m_rain_ann,
   "Rainfall Seasonality" = m_rain_seas,
-  "Days Above 10"        = m_days10, 
-  "Days Above 5"        = m_days5
-  
+  "Days Above 5"        = m_days5, 
+  "max_temp"          = m_max_temp, 
+  "min_temp"          = m_min_temp
 )
 
 # AICc Table
 aictab(cand.set = models)
 
-top_model_reml <- lme(
-  SVL_Ave ~ temp_seasonality + Sex,
-  random = ~ 1 | Site,
-  data = cf_morpho,
-  method = "REML"
-)
+top_model_reml <- lm(SVL_Ave ~ temp_seasonality + Sex, data = cf_morpho)
 
 summary(top_model_reml)
-intervals(top_model_reml)
 
-
-
+#Probably shouldn't include min and max temp moving forward i guess?
 
 #####Moran's I test
 
@@ -223,22 +222,21 @@ Moran.I(site_svl$SVL_Ave, inv_dist)
 
 #Moran's I test: Residuals of top model
 #We expect this to come back non-significant, which would mean there is no leftover spatially patterned variable we're missing
-cf_morpho$resid <- residuals(top_model_reml, type = "normalized")
+cf_morpho$resid <- residuals(top_model_reml, type = "response")
 
 Moran.I(cf_morpho$resid, inv_dist) 
 
 
-#Raw SVL showed significant spatial autocorrelation (I = 0.363, p < 0.001); model residuals did not (I = 0.074, p = 0.228), indicating no residual spatial structure left unaccounted for by the top model.
+#Raw SVL showed significant spatial autocorrelation (I = 0.363, p < 0.001); model residuals did not (I = 0.089, p = 0.155), indicating no residual spatial structure left unaccounted for by the top model.
 
 
 #####Hierarchical partitioning
 
 #It calculates the indepent explanatory power of each variable by averaging goodness of fit measures across all possible subset models. It solves problems caused by multicollinearity showing which variables truly explain the most variance independently. 
 
-m_full_hp <- lme(SVL_Ave ~ annual_temp + temp_seasonality + days_above_5 +
-                   annual_rainfall + rainfall_seasonality + Sex,
-                 random = ~ 1 | Site,
-                 data = cf_morpho, method = "ML")
+m_full_hp <- lm(SVL_Ave ~ annual_temp + temp_seasonality + days_above_5 +
+                   annual_rainfall + precip_seasonality + max_temp + min_temp + Sex,
+                 data = cf_morpho, method = "qr")
 
 hp_result <- glmm.hp(m_full_hp)
 
@@ -248,9 +246,11 @@ hp_result <- glmm.hp(m_full_hp)
 
 #Hierarchical partitioning figure
 hp_df <- data.frame(
-  variable = c("Annual Temp", "Temp Seasonality", "Days Above 5", "Sex", "rain seasonality", "annual rainfall"),
-  I_perc = c(22.70, 31.06, 23.78, 5.60, 5.16, 11.70)
+  variable = c("Annual Temp", "Temp Seasonality", "Days Above 5", "Annual Rainfall", 
+               "Rainfall Seasonality", "Max Temp", "Min Temp", "Sex"),
+  I_perc = c(16.08, 21.44, 17.37, 8.90, 3.87, 8.76, 17.98, 5.60)
 )
+
 hp_df$variable <- factor(hp_df$variable, levels = hp_df$variable[order(-hp_df$I_perc)])
 ggplot(hp_df, aes(x = variable, y = I_perc)) +
   geom_col(fill = "grey40", width = 0.6) +
